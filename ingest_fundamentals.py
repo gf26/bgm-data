@@ -4,6 +4,10 @@ Weekly ingestion job: balance sheet, income statement, cashflow, and company inf
 These change quarterly at most, so running this weekly (instead of daily) is plenty,
 and keeps well clear of Yahoo Finance rate limits.
 
+Each piece (each statement, and company info) is fetched and upserted independently,
+so a failure in one (e.g. yfinance's .info sometimes raises internal errors for
+thinly-covered tickers) doesn't discard the rest of that ticker's data.
+
 Usage:
     DATABASE_URL="postgresql://..." python ingest_fundamentals.py
 """
@@ -38,7 +42,11 @@ def get_active_tickers():
 
 
 def upsert_financials(cur, df, ticker, statement, period_type):
-    if df is None or df.empty:
+    if df is None:
+        return 0
+    if isinstance(df, pd.Series):  # yfinance occasionally returns a Series instead of a DataFrame
+        df = df.to_frame()
+    if df.empty:
         return 0
     long_df = df.reset_index().melt(id_vars=df.reset_index().columns[0], var_name="fiscal_date", value_name="value")
     long_df.columns = ["line_item", "fiscal_date", "value"]
@@ -80,24 +88,37 @@ def main():
     print(f"Starting fundamentals ingestion for {len(tickers)} tickers.")
 
     for idx, t in enumerate(tickers, start=1):
+        tk = yf.Ticker(t)
+        total_rows = 0
+        issues = []
+
+        conn = engine.raw_connection()
         try:
-            tk = yf.Ticker(t)
-            conn = engine.raw_connection()
-            total_rows = 0
-            try:
-                with conn.cursor() as cur:
-                    for attr, (statement, period_type) in STATEMENTS.items():
+            with conn.cursor() as cur:
+                for attr, (statement, period_type) in STATEMENTS.items():
+                    try:
                         df = getattr(tk, attr, None)
                         total_rows += upsert_financials(cur, df, t, statement, period_type)
+                    except Exception as e:
+                        issues.append(f"{attr}: {e}")
+
+                try:
                     upsert_info(cur, t, tk.info)
-                conn.commit()
-            finally:
-                conn.close()
-            print(f"[{idx}/{len(tickers)}] [{t}] ok - {total_rows} financial line items")
-            log("ingest_fundamentals", t, "ok", f"{total_rows} rows")
+                except Exception as e:
+                    issues.append(f"info: {e}")
+
+            conn.commit()  # commits whatever succeeded above, even if some pieces raised
         except Exception as e:
-            print(f"[{idx}/{len(tickers)}] [{t}] ERROR: {e}")
-            log("ingest_fundamentals", t, "error", str(e))
+            conn.rollback()
+            issues.append(f"fatal: {e}")
+        finally:
+            conn.close()
+
+        status = "ok" if not issues else ("partial" if total_rows else "error")
+        message = f"{total_rows} rows" + (f" - issues: {'; '.join(issues)}" if issues else "")
+        print(f"[{idx}/{len(tickers)}] [{t}] {status} - {message}")
+        log("ingest_fundamentals", t, status, message)
+
         time.sleep(SLEEP_BETWEEN_TICKERS)
     print("Done.")
 
