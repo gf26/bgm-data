@@ -2,8 +2,8 @@ name: Daily Price Ingestion
 
 on:
   schedule:
-    - cron: "0 21 * * 1-5"   # 21:00 UTC = 18:00 BRT, Mon-Fri, after B3 closes
-  workflow_dispatch: {}       # adds a "Run workflow" button so you can trigger it by hand
+    - cron: "0 21 * * 1-5"
+  workflow_dispatch: {}
 
 jobs:
   ingest:
