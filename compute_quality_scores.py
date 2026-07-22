@@ -182,11 +182,15 @@ def compute_beneish_m(ticker):
 
 # Thresholds and clamps below reproduce this project's original VTI formula as-is.
 def compute_vti(row):
+    def as_float(x):
+        return None if pd.isna(x) else float(x)
+
     pb, ps, pe, pc, de, gr_pct, dy_pct, dpr_pct = (
-        row["price_to_book"], row["price_to_sales"], row["price_to_earnings"], row["price_to_cash"],
-        row["debt_to_equity"], row["net_income_growth_pct"], row["dividend_yield_pct"], row["dividend_payout_ratio_pct"],
+        as_float(row["price_to_book"]), as_float(row["price_to_sales"]), as_float(row["price_to_earnings"]),
+        as_float(row["price_to_cash"]), as_float(row["debt_to_equity"]), as_float(row["net_income_growth_pct"]),
+        as_float(row["dividend_yield_pct"]), as_float(row["dividend_payout_ratio_pct"]),
     )
-    if None in (pb, ps, pe, pc, de, gr_pct, dy_pct, dpr_pct):
+    if any(v is None for v in (pb, ps, pe, pc, de, gr_pct, dy_pct, dpr_pct)):
         return None
     gr, dy, dpr = gr_pct / 100, dy_pct / 100, dpr_pct / 100
     if gr == 0 or dy == 0:
@@ -207,7 +211,7 @@ def compute_vti(row):
     x7 = 43 if x7 <= 0 else min(x7, 17.5)
 
     vti = 14.286 * (x1 + x2 + x3 + x4 + x5 + x6 + x7)
-    return round(vti, 2)
+    return float(round(vti, 2))
 
 
 def update_scores(ticker, z, zone, m, flag, vti):
