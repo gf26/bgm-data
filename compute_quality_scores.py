@@ -90,6 +90,21 @@ def load_market_cap(ticker):
     return float(row[0]) if row and row[0] is not None else None
 
 
+def load_market_cap_fallback(ticker, bs_lfy):
+    """price * shares outstanding, used when company_info has no 'marketCap'."""
+    shares = g(bs_lfy, "Ordinary Shares Number", "Share Issued")
+    if shares is None:
+        return None
+    with engine.connect() as conn:
+        row = conn.execute(text("""
+            SELECT adj_close FROM prices_daily WHERE ticker = :t AND adj_close IS NOT NULL
+            ORDER BY date DESC LIMIT 1
+        """), {"t": ticker}).fetchone()
+    if not row:
+        return None
+    return float(row[0]) * shares
+
+
 def compute_altman_z(ticker):
     bs_lfy, _, _ = get_lfy_pair(ticker, "balance_sheet")
     inc_lfy, _, _ = get_lfy_pair(ticker, "income_statement")
@@ -101,11 +116,11 @@ def compute_altman_z(ticker):
     current_liab = g(bs_lfy, "Current Liabilities")
     retained_earnings = g(bs_lfy, "Retained Earnings")
     total_liab = g(bs_lfy, "Total Liabilities Net Minority Interest")
-    ebit = g(inc_lfy, "EBIT")
+    ebit = g(inc_lfy, "EBIT", "Operating Income", "Total Operating Income As Reported", "Pretax Income")
     sales = g(inc_lfy, "Total Revenue")
-    market_cap = load_market_cap(ticker)
+    market_cap = load_market_cap(ticker) or load_market_cap_fallback(ticker, bs_lfy)
 
-    if None in (total_assets, current_assets, current_liab, retained_earnings, total_liab, ebit, sales, market_cap) or total_assets == 0:
+    if any(v is None for v in (total_assets, current_assets, current_liab, retained_earnings, total_liab, ebit, sales, market_cap)) or total_assets == 0:
         return None, None
 
     a = (current_assets - current_liab) / total_assets
