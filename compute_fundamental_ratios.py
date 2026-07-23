@@ -214,11 +214,11 @@ def compute_for_ticker(ticker):
     sales = g(inc_lfy, "Total Revenue")
     net_income = g(inc_lfy, "Net Income")
     gross_profit = g(inc_lfy, "Gross Profit")
-    operating_income = g(inc_lfy, "Operating Income")
+    operating_income = g(inc_lfy, "Operating Income", "Total Operating Income As Reported", "Pretax Income")
     eps_diluted = g(inc_lfy, "Diluted EPS", "Basic EPS")
 
     net_income_lfy1 = g(inc_lfy1, "Net Income")
-    operating_income_lfy1 = g(inc_lfy1, "Operating Income")
+    operating_income_lfy1 = g(inc_lfy1, "Operating Income", "Total Operating Income As Reported", "Pretax Income")
 
     dividend_per_share = trailing_div  # yfinance dividends are already per-share
     row = {
